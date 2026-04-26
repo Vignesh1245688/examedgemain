@@ -1,0 +1,10 @@
+django>=4.0
+python-dotenv
+djangorestframework
+django-cors-headers
+djangorestframework-simplejwt
+requests
+django-filter
+pdfplumber
+google-genai
+groq
