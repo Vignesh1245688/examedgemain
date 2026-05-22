@@ -113,3 +113,32 @@ class PDFResourceAPIView(APIView):
             }
         ]
         return Response(fallback, status=status.HTTP_200_OK)
+
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from .models import Resource
+from .serializers import ResourceSerializer
+
+class UserResourceAPIView(APIView):
+    """
+    Allows users to upload resources (PDFs, video links) and view community resources.
+    """
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request):
+        # Return all resources, ordered by newest
+        resources = Resource.objects.all().order_by('-created_at')[:50]
+        serializer = ResourceSerializer(resources, many=True, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        serializer = ResourceSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            # If user is authenticated, set them as the uploader
+            if request.user.is_authenticated:
+                serializer.save(uploaded_by=request.user)
+            else:
+                serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

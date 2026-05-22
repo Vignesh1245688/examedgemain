@@ -23,10 +23,19 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response({"user": UserSerializer(user).data, "message": "User created successfully"}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get', 'put', 'patch'])
     def profile(self, request):
-        serializer = self.get_serializer(request.user)
-        return Response(serializer.data)
+        if request.method == 'GET':
+            serializer = self.get_serializer(request.user)
+            return Response(serializer.data)
+        
+        # Handling PUT/PATCH
+        partial = request.method == 'PATCH'
+        serializer = self.get_serializer(request.user, data=request.data, partial=partial)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['post'], url_path='bookmark/(?P<exam_id>[^/.]+)')
     def bookmark(self, request, exam_id=None):
@@ -48,12 +57,11 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer = NotificationSerializer(queryset, many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['post'], url_path='notifications/(?P<notification_id>[^/.]+)/read')
-    def mark_notification_read(self, request, notification_id=None):
+    @action(detail=False, methods=['delete'], url_path='notifications/(?P<notification_id>[^/.]+)/delete')
+    def delete_notification(self, request, notification_id=None):
         try:
             notification = Notification.objects.get(id=notification_id, user=request.user)
-            notification.is_read = True
-            notification.save()
-            return Response({"status": "Notification marked as read"}, status=status.HTTP_200_OK)
+            notification.delete()
+            return Response({"status": "Notification deleted"}, status=status.HTTP_204_NO_CONTENT)
         except Notification.DoesNotExist:
             return Response({"error": "Notification not found"}, status=status.HTTP_404_NOT_FOUND)

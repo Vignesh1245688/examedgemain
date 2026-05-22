@@ -8,3 +8,7 @@ django-filter
 pdfplumber
 google-genai
 groq
+gunicorn
+whitenoise
+dj-database-url
+psycopg2-binary

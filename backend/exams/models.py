@@ -1,5 +1,7 @@
 from django.db import models
 
+from django.conf import settings
+
 class Category(models.Model):
     name = models.CharField(max_length=100)
     slug = models.SlugField(max_length=100, unique=True)
@@ -22,6 +24,15 @@ class Exam(models.Model):
     application_start_date = models.DateField(blank=True, null=True)
     application_end_date = models.DateField(blank=True, null=True)
     vacancies = models.IntegerField(blank=True, null=True)
+    
+    # User submission fields
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='uploaded_exams'
+    )
+    is_approved = models.BooleanField(
+        default=True, help_text="Set to True by admin to publish this user-submitted exam"
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
