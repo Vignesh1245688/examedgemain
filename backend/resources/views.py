@@ -68,7 +68,65 @@ class PDFResourceAPIView(APIView):
     """
     Fetches PDF study materials using DuckDuckGo live search.
     No API key required - returns real, direct links to study resources.
+    Uses multiple fallback methods for cloud server compatibility.
     """
+    def _search_ddgs_library(self, search_query):
+        """Try using the ddgs Python library."""
+        try:
+            from duckduckgo_search import DDGS
+            results = DDGS().text(search_query, max_results=15)
+            return results
+        except Exception as e:
+            print(f"DDGS library error: {e}")
+        
+        # Also try the older import path
+        try:
+            from ddgs import DDGS
+            results = DDGS().text(search_query, max_results=15)
+            return results
+        except Exception as e:
+            print(f"DDGS alt import error: {e}")
+        
+        return None
+
+    def _search_requests_fallback(self, search_query):
+        """Fallback: use requests to scrape DuckDuckGo HTML results."""
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+            encoded_query = quote_plus(search_query)
+            url = f"https://html.duckduckgo.com/html/?q={encoded_query}"
+            resp = requests.get(url, headers=headers, timeout=10)
+            resp.raise_for_status()
+
+            results = []
+            # Parse results using regex (avoiding BeautifulSoup dependency)
+            links = re.findall(r'<a rel="nofollow" class="result__a" href="(.*?)">(.*?)</a>', resp.text)
+            snippets = re.findall(r'<a class="result__snippet".*?>(.*?)</a>', resp.text, re.DOTALL)
+
+            for i, (link, title) in enumerate(links[:15]):
+                # DuckDuckGo wraps URLs in a redirect, extract the actual URL
+                actual_link = link
+                if 'uddg=' in link:
+                    match = re.search(r'uddg=([^&]+)', link)
+                    if match:
+                        actual_link = unquote(match.group(1))
+
+                clean_title = re.sub(r'<.*?>', '', title).strip()
+                snippet = re.sub(r'<.*?>', '', snippets[i]).strip() if i < len(snippets) else ""
+
+                results.append({
+                    "href": actual_link,
+                    "title": clean_title,
+                    "body": snippet
+                })
+
+            return results if results else None
+        except Exception as e:
+            print(f"Requests fallback error: {e}")
+            return None
+
     def get(self, request):
         query = request.query_params.get("q", "UPSC notes PDF")
         
@@ -76,12 +134,15 @@ class PDFResourceAPIView(APIView):
         base_query = query.replace(" notes PDF", "").replace(" PDF", "").replace(" preparation", "").strip()
         search_query = f"{base_query} study material notes PDF free download"
         
-        # Live search using DuckDuckGo (free, no API key needed)
-        try:
-            from ddgs import DDGS
-            
-            results = DDGS().text(search_query, max_results=15)
-            
+        # Try Method 1: DDGS library
+        results = self._search_ddgs_library(search_query)
+        
+        # Try Method 2: Requests fallback
+        if not results:
+            results = self._search_requests_fallback(search_query)
+        
+        # Process results
+        if results:
             pdfs = []
             seen_urls = set()
             
@@ -100,16 +161,23 @@ class PDFResourceAPIView(APIView):
             
             if pdfs:
                 return Response(pdfs[:10], status=status.HTTP_200_OK)
-                
-        except Exception as e:
-            print(f"DuckDuckGo Search Error: {e}")
 
-        # Fallback: return helpful message
+        # Fallback: return curated educational sites
         fallback = [
             {
-                "title": f"Search for {base_query} study material",
-                "link": f"https://duckduckgo.com/?q={base_query}+study+material+notes+PDF",
-                "snippet": f"Click here to search for {base_query} study materials on DuckDuckGo."
+                "title": f"{base_query} - NCERT Official Resources",
+                "link": f"https://ncert.nic.in/",
+                "snippet": f"Official NCERT portal with free textbooks and study materials."
+            },
+            {
+                "title": f"{base_query} - Unacademy Free Resources",
+                "link": f"https://unacademy.com/",
+                "snippet": f"Free video lessons and study materials for competitive exams."
+            },
+            {
+                "title": f"Search {base_query} study materials",
+                "link": f"https://duckduckgo.com/?q={quote_plus(base_query)}+study+material+notes+PDF",
+                "snippet": f"Click to search for {base_query} study materials on DuckDuckGo."
             }
         ]
         return Response(fallback, status=status.HTTP_200_OK)
